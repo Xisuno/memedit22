@@ -22,8 +22,10 @@ static void entry(void)
 {
     NSString *bundleIdentifier = NSBundle.mainBundle.bundleIdentifier;
     if (!shouldEnableForBundleIdentifier(bundleIdentifier)) {
+        NSLog(@"[memedit] not enabled for %@", bundleIdentifier);
         return;
     }
+    NSLog(@"[memedit] enabled for %@, button will be added in 3s", bundleIdentifier);
 
     MEStore *store = MEStore.shared;
     MESpeedHackInstall();

@@ -6,6 +6,7 @@
 static UIWindow *activeApplicationWindow(void)
 {
     UIApplication *application = UIApplication.sharedApplication;
+    UIWindow *visibleWindow = nil;
     for (UIScene *scene in application.connectedScenes) {
         if (![scene isKindOfClass:UIWindowScene.class]) {
             continue;
@@ -16,9 +17,49 @@ static UIWindow *activeApplicationWindow(void)
             if (window.isKeyWindow) {
                 return window;
             }
+            if (!visibleWindow && !window.hidden) {
+                visibleWindow = window;
+            }
         }
     }
-    return nil;
+    if (visibleWindow) {
+        return visibleWindow;
+    }
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    UIWindow *legacyWindow = application.keyWindow ?: application.windows.firstObject;
+#pragma clang diagnostic pop
+    return legacyWindow;
+}
+
+// The game can replace its key window after our first attach (splash to main window)
+// or add views on top of the button, so check once a second and fix both cases.
+static void keepButtonAttached(void)
+{
+    static NSTimer *timer = nil;
+    if (timer) {
+        return;
+    }
+
+    timer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) {
+        DLGMemUIView *view = [DLGMemUIView instance];
+        if (view.expanded) {
+            return;
+        }
+        UIWindow *window = activeApplicationWindow();
+        if (!window) {
+            return;
+        }
+        if (view.superview != window) {
+            NSLog(@"[memedit] re-attaching button to %@", NSStringFromClass(window.class));
+            [window addSubview:view];
+            [window setDLGMemUIView:view];
+            [MEShortcutBar installInWindow:window];
+        } else if (window.subviews.lastObject != view) {
+            [window bringSubviewToFront:view];
+        }
+    }];
 }
 
 @implementation DLGMemUI
@@ -33,6 +74,7 @@ static UIWindow *activeApplicationWindow(void)
         }
     }
 
+    NSLog(@"[memedit] no window yet, retrying in 1s");
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [DLGMemUI addDLGMemUIView:delegate];
     });
@@ -48,6 +90,7 @@ static UIWindow *activeApplicationWindow(void)
     view.alpha = 1.0f;
     [window addSubview:view];
     [window setDLGMemUIView:view];
+    NSLog(@"[memedit] button added to %@ frame=%@ hidden=%d", NSStringFromClass(window.class), NSStringFromCGRect(view.frame), view.hidden);
 
     NSArray *gestures = view.gestureRecognizers;
     if (gestures == nil || gestures.count == 0) {
@@ -60,6 +103,7 @@ static UIWindow *activeApplicationWindow(void)
     }
 
     [MEShortcutBar installInWindow:window];
+    keepButtonAttached();
 }
 
 + (void)removeDLGMemUIView {
